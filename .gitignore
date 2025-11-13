@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.env
+
+# RAG
+rag_documents/*.pdf
+vectorstore/
+!rag_documents/.gitkeep
+!vectorstore/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
