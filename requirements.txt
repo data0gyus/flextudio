@@ -7,13 +7,11 @@ python-multipart==0.0.6
 langchain-google-genai==2.0.5
 langchain-core==0.3.28
 
-# LangChain RAG
+# LangChain RAG (경량)
 langchain==0.3.7
-langchain-huggingface==0.1.2
-langchain-text-splitters==0.3.2
 langchain-community==0.3.7
-faiss-cpu==1.7.4
-sentence-transformers==3.3.1
+langchain-text-splitters==0.3.2
+faiss-cpu==1.7.4  # ChromaDB 대신!
 
 # PDF
 pdfplumber==0.11.0

@@ -1,10 +1,16 @@
+"""
+RAG 시스템 - Gemini Embeddings API 사용 (메모리 최적화)
+"""
 import os
 from pathlib import Path
 from typing import List, Dict
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import FAISS 
+from langchain_google_genai import GoogleGenerativeAIEmbeddings  # ← Gemini!
+from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import pdfplumber
+
+# 환경변수
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # 전역 변수
 _rag_system = None
@@ -14,12 +20,13 @@ class RAGSystem:
         self.pdf_dir = Path(pdf_dir)
         self.persist_dir = Path(persist_dir)
         
-        # 임베딩 모델 (경량 모델 사용!)
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name='jhgan/ko-sroberta-nli',
-            model_kwargs={'device': 'cpu'},
-            encode_kwargs={'normalize_embeddings': True}
+        # Gemini Embeddings API 사용 (메모리 0MB!)
+        print("🔧 Gemini Embeddings API 초기화 중...")
+        self.embeddings = GoogleGenerativeAIEmbeddings(
+            model="models/embedding-001",  # Gemini 임베딩 모델
+            google_api_key=GOOGLE_API_KEY
         )
+        print("✅ Gemini Embeddings API 초기화 완료")
         
         # 텍스트 분할기
         self.text_splitter = RecursiveCharacterTextSplitter(
@@ -64,15 +71,13 @@ class RAGSystem:
         return documents
     
     def build_vectorstore(self, force_recreate: bool = False):
-        """벡터 DB 생성 (FAISS 사용)"""
-        
-        # FAISS는 persist 안 함 (메모리만 사용)
+        """벡터 DB 생성 (FAISS + Gemini Embeddings)"""
         
         # PDF 로드
         documents = self.load_pdfs()
         
         if not documents:
-            print("⚠️ 로드할 문서가 없습니다.")
+            print("⚠️ 로드할 문서가 없습니다. RAG 없이 진행합니다.")
             return
         
         # 텍스트 분할
@@ -87,17 +92,18 @@ class RAGSystem:
         
         print(f"📄 총 {len(all_splits)}개 청크 생성")
         
-        # 벡터 DB 생성 (FAISS)
+        # 벡터 DB 생성 (FAISS + Gemini Embeddings API)
         texts = [s["content"] for s in all_splits]
         metadatas = [{"source": s["source"]} for s in all_splits]
         
+        print("🔄 벡터 DB 생성 중... (Gemini API 호출)")
         self.vectorstore = FAISS.from_texts(
             texts=texts,
-            embedding=self.embeddings,
+            embedding=self.embeddings,  # ← Gemini API 사용!
             metadatas=metadatas
         )
         
-        print(f"✅ 벡터 DB 생성 완료 (FAISS)!")
+        print(f"✅ 벡터 DB 생성 완료!")
     
     def search(self, query: str, k: int = 3) -> List[Dict[str, str]]:
         """유사도 검색"""
@@ -131,6 +137,7 @@ def initialize_rag_system(force_recreate: bool = False):
         return _rag_system
     except Exception as e:
         print(f"❌ RAG 시스템 초기화 실패: {e}")
+        print("⚠️ RAG 없이 계속 진행합니다.")
         return None
 
 def get_rag_system():
