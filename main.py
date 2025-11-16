@@ -88,7 +88,7 @@ async def chat(request: ChatRequest):
         )
         
         return create_success_response(
-            data=response,
+            data=[response],
             message="응답 생성 성공"
         )
     
