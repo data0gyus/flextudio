@@ -1,5 +1,3 @@
-""" 데이터 모델 """
-
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Any
 from datetime import datetime, timezone, timedelta

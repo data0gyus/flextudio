@@ -1,21 +1,11 @@
-# FastAPI
 fastapi==0.104.1
-uvicorn[standard]==0.24.0
+uvicorn==0.24.0
 python-multipart==0.0.6
-
-# Gemini (Google AI)
+google-generativeai==0.3.2
 langchain-google-genai==2.0.5
 langchain-core==0.3.28
-
-# LangChain RAG (경량)
-langchain==0.3.7
 langchain-community==0.3.7
 langchain-text-splitters==0.3.2
-faiss-cpu==1.7.4  # ChromaDB 대신!
-
-# PDF
-pdfplumber==0.11.0
-
-# Utility
+faiss-cpu==1.7.4
 pydantic==2.7.4
 python-dotenv==1.0.0
