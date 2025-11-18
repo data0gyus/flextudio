@@ -22,15 +22,15 @@ class RAGSystem:
         print("   모델: jhgan/ko-sroberta-multitask")
         
         self.embeddings = HuggingFaceEmbeddings(
-            model_name="jhgan/ko-sroberta-multitask",  # ← 한국어 최적!
-            model_kwargs={'device': 'cpu'},
-            encode_kwargs={
-                'normalize_embeddings': True,
-                'batch_size': 8,  # 메모리 절약
-                'show_progress_bar': False
-            },
-            cache_folder="/tmp/hf_cache"
-        )
+    model_name="jhgan/ko-sbert-sts",  # ← 변경
+    model_kwargs={'device': 'cpu'},
+    encode_kwargs={
+        'normalize_embeddings': True,
+        'batch_size': 8,
+        'show_progress_bar': False
+    },
+    cache_folder="/tmp/hf_cache"
+)
         print("✅ 한국어 임베딩 초기화 완료")
         
         self.text_splitter = RecursiveCharacterTextSplitter(
