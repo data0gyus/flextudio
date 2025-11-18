@@ -14,3 +14,7 @@ vectorstore/
 .vscode/
 .idea/
 .DS_Store
+
+
+cache.py
+test.py

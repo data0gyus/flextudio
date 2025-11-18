@@ -1,11 +1,15 @@
+"""
+RAG 시스템 - 한국어 최적화 (Render 512MB)
+"""
 import os
 from pathlib import Path
 from typing import List, Dict
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from dotenv import load_dotenv
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+load_dotenv()
 
 _rag_system = None
 
@@ -14,17 +18,25 @@ class RAGSystem:
         self.doc_dir = Path(doc_dir)
         self.cache_dir = Path(cache_dir)
         
-        print("🔧 Gemini Embeddings API 초기화...")
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/embedding-001",
-            google_api_key=GOOGLE_API_KEY
-        )
+        print("🤗 한국어 임베딩 모델 초기화...")
+        print("   모델: jhgan/ko-sroberta-multitask")
         
-        # 청크 크기 (메모리 절약)
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name="jhgan/ko-sroberta-multitask",  # ← 한국어 최적!
+            model_kwargs={'device': 'cpu'},
+            encode_kwargs={
+                'normalize_embeddings': True,
+                'batch_size': 8,  # 메모리 절약
+                'show_progress_bar': False
+            },
+            cache_folder="/tmp/hf_cache"
+        )
+        print("✅ 한국어 임베딩 초기화 완료")
+        
         self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=300,
-            chunk_overlap=30,
-            separators=["\n\n", "\n", ". ", " "]
+            chunk_size=400,
+            chunk_overlap=50,
+            separators=["\n\n", "\n", ".", "!", "?", " "]
         )
         
         self.vectorstore = None
@@ -34,36 +46,27 @@ class RAGSystem:
         documents = []
         
         if not self.doc_dir.exists():
-            print(f"⚠️ 문서 디렉토리 없음: {self.doc_dir}")
             return documents
         
-        txt_files = list(self.doc_dir.glob("*.txt"))
-        
-        if not txt_files:
-            print(f"⚠️ TXT 파일 없음: {self.doc_dir}")
-            return documents
-        
-        for txt_path in txt_files:
+        for txt_path in self.doc_dir.glob("*.txt"):
             try:
                 with open(txt_path, 'r', encoding='utf-8') as f:
                     text = f.read()
-                    
                     if text.strip():
                         documents.append({
                             "content": text,
                             "source": txt_path.name
                         })
                         print(f"✅ 로드: {txt_path.name}")
-            
             except Exception as e:
-                print(f"❌ TXT 로드 실패 ({txt_path.name}): {e}")
+                print(f"❌ 실패 ({txt_path.name}): {e}")
         
         return documents
     
     def build_vectorstore(self, force_recreate: bool = False):
-        """벡터 DB 생성 (캐싱 포함)"""
+        """벡터 DB 로드 (캐시 우선)"""
         
-        # 🔥 캐시 존재 확인
+        # 캐시 로드
         if self.cache_dir.exists() and not force_recreate:
             try:
                 print("📦 캐시된 벡터 DB 로드 중...")
@@ -72,20 +75,28 @@ class RAGSystem:
                     self.embeddings,
                     allow_dangerous_deserialization=True
                 )
-                print("✅ 캐시 로드 완료! (API 호출 0회)")
+                print("✅ 캐시 로드 완료! (임베딩 0회)")
                 return
             except Exception as e:
                 print(f"⚠️ 캐시 로드 실패: {e}")
-                print("🔄 새로 생성합니다...")
         
-        # 📄 문서 로드
-        documents = self.load_documents()
+        # 캐시 없으면 경고
+        print("⚠️ 벡터 DB 캐시가 없습니다!")
+        print("💡 로컬에서 create_cache_local.py를 실행하세요.")
         
-        if not documents:
-            print("⚠️ 로드할 문서 없음")
+        if os.getenv("RENDER"):
+            print("🚨 Render에서는 캐시 필수입니다!")
             return
         
-        # ✂️ 텍스트 분할
+        # 로컬에서만 생성
+        self._build_from_scratch()
+    
+    def _build_from_scratch(self):
+        """새로 생성 (로컬 전용)"""
+        documents = self.load_documents()
+        if not documents:
+            return
+        
         all_splits = []
         for doc in documents:
             splits = self.text_splitter.split_text(doc["content"])
@@ -95,34 +106,31 @@ class RAGSystem:
                     "source": doc["source"]
                 })
         
-        print(f"📄 총 {len(all_splits)}개 청크 생성")
+        print(f"📄 총 {len(all_splits)}개 청크")
         
-        # 청크 수 제한 (메모리 절약)
-        max_chunks = 500
+        max_chunks = 400
         if len(all_splits) > max_chunks:
-            print(f"⚠️ 청크 수 제한: {len(all_splits)} → {max_chunks}")
             all_splits = all_splits[:max_chunks]
         
-        # 🌐 벡터 DB 생성 (API 호출 발생)
         texts = [s["content"] for s in all_splits]
         metadatas = [{"source": s["source"]} for s in all_splits]
         
-        print(f"🔄 벡터 DB 생성 중... ({len(texts)}개 임베딩 API 호출)")
+        print(f"🔄 벡터 DB 생성 중...")
         self.vectorstore = FAISS.from_texts(
             texts=texts,
             embedding=self.embeddings,
             metadatas=metadatas
         )
         
-        print(f"✅ 벡터 DB 생성 완료!")
+        print("✅ 생성 완료!")
         
-        # 💾 디스크에 저장
+        # 저장
         try:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             self.vectorstore.save_local(str(self.cache_dir))
-            print(f"💾 벡터 DB 캐시 저장 완료: {self.cache_dir}")
+            print(f"💾 저장 완료: {self.cache_dir}")
         except Exception as e:
-            print(f"⚠️ 캐시 저장 실패: {e}")
+            print(f"⚠️ 저장 실패: {e}")
     
     def search(self, query: str, k: int = 3) -> List[Dict[str, str]]:
         """검색"""
@@ -148,12 +156,14 @@ def initialize_rag_system(force_recreate: bool = False):
     global _rag_system
     
     try:
-        print("🚀 RAG 시스템 초기화 (캐싱 포함)")
+        print("🚀 RAG 시스템 초기화 (한국어 최적화)")
         _rag_system = RAGSystem()
         _rag_system.build_vectorstore(force_recreate=force_recreate)
         return _rag_system
     except Exception as e:
         print(f"❌ RAG 초기화 실패: {e}")
+        import traceback
+        traceback.print_exc()
         print("⚠️ RAG 없이 계속 진행")
         return None
 

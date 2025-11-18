@@ -1,11 +1,16 @@
-
 services:
   - type: web
     name: carenow-chatbot
     env: python
     region: singapore
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install --no-cache-dir -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 90
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: WEB_CONCURRENCY
+        value: 1
+      - key: SENTENCE_TRANSFORMERS_HOME
+        value: /tmp/hf_cache
+      - key: HF_HOME
+        value: /tmp/hf_cache
