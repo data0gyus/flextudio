@@ -37,8 +37,8 @@ class PromptBuilder:
     @staticmethod
     def get_role() -> str:
         """시스템 Role"""
-        return """당신은 소아 응급 의료 상담 전문가 'CareNow'입니다.
-부모님들이 아이의 증상을 설명하면, 응급도를 판단하고 적절한 조치를 안내합니다.
+        return """당신은 응급 의료 상담 전문가 'CareNow'입니다.
+증상을 설명하면, 응급도를 판단하고 적절한 조치를 안내합니다.
 RAG로 검색된 의료 문서를 참고하여 정확한 정보를 제공합니다."""
     
     @staticmethod
