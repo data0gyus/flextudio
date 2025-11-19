@@ -6,7 +6,7 @@ LangChain + Gemini 2.0 Flash
 
 import os 
 from pydantic import BaseModel, Field
-from typing import List, Dict
+from typing import List, Dict, Any
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -38,7 +38,7 @@ class ResponseSchema(BaseModel):
     friendly_message: str = Field(description="공감적 메시지 2-3문장")
 
 
-async def analyze_symptom(request: ChatRequest) -> Dict[str, any]:
+async def analyze_symptom(request: ChatRequest) -> Dict[str, Any]:
     """
     증상 분석 (RAG 기반)
     
@@ -61,10 +61,6 @@ async def analyze_symptom(request: ChatRequest) -> Dict[str, any]:
     has_medical_context = len(medical_context) > 100
     print(f"✅ RAG: {len(medical_context)} chars (매칭: {has_medical_context})")
     
-    # 3. 사용자 정보
-    user_info = ""
-    if request.user_age:
-        user_info = f"\n환자 나이: {request.user_age}세"
     
     # 4. 프롬프트 구성
     parser = JsonOutputParser(pydantic_object=ResponseSchema)
@@ -146,10 +142,9 @@ departments 필드에는 위 가이드에 따라 **최소 1개, 최대 3개**까
 """
     
     chat_prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        # 🔴 기존: "증상: {{message}}{user_info}\n\n위 증상을 분석하여 JSON으로 응답하세요."
-        ("user", "증상: {message}{user_info}\n\n위 증상을 분석하여 JSON으로 응답하세요.")
-    ])
+    ("system", system_prompt),
+    ("user", "증상: {message}\n\n위 증상을 분석하여 JSON으로 응답하세요.")
+])
     
     # 5. LangChain 실행
     chain = chat_prompt | llm | parser
@@ -157,8 +152,7 @@ departments 필드에는 위 가이드에 따라 **최소 1개, 최대 3개**까
     try:
         print(f"🤖 Gemini 분석 중...")
         result = await chain.ainvoke({
-            "message": symptom_text,
-            "user_info": user_info  # 🔧 추가: 템플릿에서 쓰는 변수까지 같이 넘기기
+            "message": symptom_text
         })
         
         print(f"✅ 분석 완료: {result['urgency_level']}")
