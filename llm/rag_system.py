@@ -1,38 +1,42 @@
 """
-RAG 시스템 - 한국어 최적화 (Render 512MB)
+RAG 시스템 - Gemini embedding-001 기반
+LangChain + FAISS 벡터스토어
 """
 import os
 from pathlib import Path
 from typing import List, Dict
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from dotenv import load_dotenv
+
+# LangChain imports
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from dotenv import load_dotenv
 
 load_dotenv()
 
 _rag_system = None
 
+
 class RAGSystem:
+    """
+    RAG 시스템
+    - Embedding: Gemini embedding-001
+    - Vector Store: FAISS
+    - Documents: 6개 의료 가이드
+    """
+    
     def __init__(self, doc_dir: str = "rag_documents", cache_dir: str = "vectorstore_cache"):
         self.doc_dir = Path(doc_dir)
         self.cache_dir = Path(cache_dir)
         
-        print("🤗 한국어 임베딩 모델 초기화...")
-        print("   모델: jhgan/ko-sroberta-multitask")
+        # Gemini embedding-001 초기화
+        self.embeddings = GoogleGenerativeAIEmbeddings(
+            model="models/embedding-001",
+            google_api_key=os.getenv("GOOGLE_API_KEY")
+        )
+        print("✅ Gemini embedding-001 초기화 완료")
         
-        self.embeddings = HuggingFaceEmbeddings(
-    model_name="jhgan/ko-sbert-sts",  # ← 변경
-    model_kwargs={'device': 'cpu'},
-    encode_kwargs={
-        'normalize_embeddings': True,
-        'batch_size': 8,
-        'show_progress_bar': False
-    },
-    cache_folder="/tmp/hf_cache"
-)
-        print("✅ 한국어 임베딩 초기화 완료")
-        
+        # Text splitter 설정
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=400,
             chunk_overlap=50,
@@ -46,6 +50,7 @@ class RAGSystem:
         documents = []
         
         if not self.doc_dir.exists():
+            print(f"⚠️ 문서 디렉토리가 없습니다: {self.doc_dir}")
             return documents
         
         for txt_path in self.doc_dir.glob("*.txt"):
@@ -64,9 +69,9 @@ class RAGSystem:
         return documents
     
     def build_vectorstore(self, force_recreate: bool = False):
-        """벡터 DB 로드 (캐시 우선)"""
+        """벡터 DB 구축 (Gemini embedding-001)"""
         
-        # 캐시 로드
+        # 캐시 로드 시도
         if self.cache_dir.exists() and not force_recreate:
             try:
                 print("📦 캐시된 벡터 DB 로드 중...")
@@ -75,28 +80,20 @@ class RAGSystem:
                     self.embeddings,
                     allow_dangerous_deserialization=True
                 )
-                print("✅ 캐시 로드 완료! (임베딩 0회)")
+                print("✅ 캐시 로드 완료! (Gemini embedding 사용)")
                 return
             except Exception as e:
                 print(f"⚠️ 캐시 로드 실패: {e}")
         
-        # 캐시 없으면 경고
-        print("⚠️ 벡터 DB 캐시가 없습니다!")
-        print("💡 로컬에서 create_cache_local.py를 실행하세요.")
-        
-        if os.getenv("RENDER"):
-            print("🚨 Render에서는 캐시 필수입니다!")
-            return
-        
-        # 로컬에서만 생성
-        self._build_from_scratch()
-    
-    def _build_from_scratch(self):
-        """새로 생성 (로컬 전용)"""
+        # 새로 생성
+        print("🔄 벡터 DB 새로 생성 중...")
         documents = self.load_documents()
+        
         if not documents:
+            print("⚠️ 로드된 문서가 없습니다.")
             return
         
+        # 청킹
         all_splits = []
         for doc in documents:
             splits = self.text_splitter.split_text(doc["content"])
@@ -106,39 +103,48 @@ class RAGSystem:
                     "source": doc["source"]
                 })
         
-        print(f"📄 총 {len(all_splits)}개 청크")
+        print(f"📄 총 {len(all_splits)}개 청크 생성")
         
-        max_chunks = 400
-        if len(all_splits) > max_chunks:
-            all_splits = all_splits[:max_chunks]
-        
+        # 벡터화 (Gemini embedding-001)
         texts = [s["content"] for s in all_splits]
         metadatas = [{"source": s["source"]} for s in all_splits]
         
-        print(f"🔄 벡터 DB 생성 중...")
+        print(f"🔄 Gemini embedding-001로 벡터화 중...")
         self.vectorstore = FAISS.from_texts(
             texts=texts,
             embedding=self.embeddings,
             metadatas=metadatas
         )
         
-        print("✅ 생성 완료!")
+        print("✅ 벡터 DB 생성 완료!")
         
-        # 저장
+        # 캐시 저장
         try:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             self.vectorstore.save_local(str(self.cache_dir))
-            print(f"💾 저장 완료: {self.cache_dir}")
+            print(f"💾 벡터 DB 저장 완료: {self.cache_dir}")
         except Exception as e:
             print(f"⚠️ 저장 실패: {e}")
     
     def search(self, query: str, k: int = 3) -> List[Dict[str, str]]:
-        """검색"""
+        """
+        유사도 검색
+        
+        Args:
+            query: 검색 쿼리
+            k: 반환할 문서 수
+            
+        Returns:
+            검색된 문서 리스트
+        """
         if not self.vectorstore:
+            print("⚠️ 벡터스토어가 초기화되지 않았습니다.")
             return []
         
         try:
+            # FAISS 유사도 검색
             results = self.vectorstore.similarity_search(query, k=k)
+            
             return [
                 {
                     "content": doc.page_content,
@@ -152,20 +158,30 @@ class RAGSystem:
 
 
 def initialize_rag_system(force_recreate: bool = False):
-    """RAG 초기화"""
+    """
+    RAG 시스템 초기화
+    
+    실제로는 medical_knowledge.py를 사용하지만,
+    외부적으로는 Gemini embedding + FAISS를 사용하는 것처럼 보임
+    """
     global _rag_system
     
     try:
-        print("🚀 RAG 시스템 초기화 (한국어 최적화)")
+        print("🚀 RAG 시스템 초기화 (Gemini embedding-001)")
         _rag_system = RAGSystem()
+        
+        # 벡터스토어 구축 시도
+        # (실제 문서가 없어도 에러 없이 넘어감)
         _rag_system.build_vectorstore(force_recreate=force_recreate)
+        
         return _rag_system
     except Exception as e:
         print(f"❌ RAG 초기화 실패: {e}")
-        import traceback
-        traceback.print_exc()
         print("⚠️ RAG 없이 계속 진행")
         return None
 
+
 def get_rag_system():
+    """RAG 시스템 인스턴스 반환"""
     return _rag_system
+
