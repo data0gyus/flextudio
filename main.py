@@ -16,7 +16,7 @@ load_dotenv()
 
 app = FastAPI(
     title="CareNow",
-    description="AI 소아 응급 증상 분석 챗봇 (RAG + Gemini Embedding)",
+    description="AI 응급 증상 분석 챗봇 (RAG + Gemini Embedding)",
     version="2.0.0"
 )
 
