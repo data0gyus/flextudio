@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Response
 from dotenv import load_dotenv
 
 from models import (
@@ -73,6 +74,10 @@ async def health_check():
         "version": "2.0.0",
         "rag_status": "active"
     }
+
+@app.head("/health")
+async def health_head():
+    return Response(status_code=200)
 
 
 @app.post("/api/chat", response_model=ApiResponse)
